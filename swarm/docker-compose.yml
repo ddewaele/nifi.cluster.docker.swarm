@@ -7,7 +7,10 @@ services:
       - ZOO_MY_ID=1
       - ZOO_SERVERS=server.1=0.0.0.0:2888:3888 server.2=zookeeper2:2888:3888 server.3=zookeeper3:2888:3888
 #    healthcheck:
-#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      test: ["CMD", "/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 300
     deploy:
       mode: replicated
       replicas: 1
@@ -19,7 +22,10 @@ services:
       - ZOO_MY_ID=2
       - ZOO_SERVERS=server.1=zookeeper1:2888:3888 server.2=0.0.0.0:2888:3888 server.3=zookeeper3:2888:3888
 #    healthcheck:
-#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      test: ["CMD", "/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 300
     deploy:
       mode: replicated
       replicas: 1
@@ -31,7 +37,10 @@ services:
       - ZOO_MY_ID=3
       - ZOO_SERVERS=server.1=zookeeper1:2888:3888 server.2=zookeeper2:2888:3888 server.3=0.0.0.0:2888:3888
 #    healthcheck:
-#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      test: ["CMD", "/zookeeper-3.4.9/bin/zkServer.sh","status"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 300
     deploy:
       mode: replicated
       replicas: 1
@@ -47,8 +56,8 @@ services:
     environment:
       - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n
     volumes:
-      - /root/nifi.properties:/opt/nifi/conf/nifi.properties:ro
-      - /root/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
+      - /root/nifi.cluster.docker.swarm/nifi1/nifi.properties:/opt/nifi/conf/nifi.properties:ro
+      - /root/nifi.cluster.docker.swarm/nifi1/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
       - /srv/nifi/flow:/opt/nifi/flow:Z
       - /srv/nifi/content_repository:/opt/nifi/content_repository:Z
       - /srv/nifi/database_repository:/opt/nifi/database_repository:Z
@@ -62,8 +71,10 @@ services:
 #      interval: 30s
 #      timeout: 10s
 #      retries: 300
-#    depends_on:
-#      - zookeeper
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
     deploy:
       mode: replicated
       replicas: 1
@@ -78,8 +89,8 @@ services:
     environment:
       - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,address=7000,server=y,suspend=n
     volumes:
-      - /root/nifi.properties:/opt/nifi/conf/nifi.properties:ro
-      - /root/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
+      - /root/nifi.cluster.docker.swarm/nifi2/nifi.properties:/opt/nifi/conf/nifi.properties:ro
+      - /root/nifi.cluster.docker.swarm/nifi2/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
       - /srv/nifi/flow:/opt/nifi/flow:Z
       - /srv/nifi/content_repository:/opt/nifi/content_repository:Z
       - /srv/nifi/database_repository:/opt/nifi/database_repository:Z
@@ -89,12 +100,14 @@ services:
       - /srv/nifi/logs:/opt/nifi/logs:Z
       - /tmp/data:/tmp/data:Z
 #    healthcheck:
-#      test: ["CMD", "wget","-q","http://localhost:8080","-O","/dev/null"]
+#      test: ["CMD", "wget","-q","http://localhost:8085","-O","/dev/null"]
 #      interval: 30s
 #      timeout: 10s
 #      retries: 300
-#    depends_on:
-#      - zookeeper
+    depends_on:
+      - zookeeper1
+      - zookeeper2
+      - zookeeper3
     deploy:
       mode: replicated
       replicas: 1
@@ -105,7 +118,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - /etc/nginx/conf.d/:/etc/nginx/conf.d/:ro
+      - /root/nifi.cluster.docker.swarm/nginx1/:/etc/nginx/conf.d/:ro
     deploy:
       mode: replicated
       replicas: 1
@@ -116,7 +129,7 @@ services:
     ports:
       - "85:85"
     volumes:
-      - /etc/nginx/conf.d/:/etc/nginx/conf.d/:ro
+      - /root/nifi.cluster.docker.swarm/nginx2/:/etc/nginx/conf.d/:ro
     deploy:
       mode: replicated
       replicas: 1
