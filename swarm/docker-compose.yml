@@ -1,0 +1,124 @@
+version: '3'
+
+services:
+  zookeeper1:
+    image: zookeeper
+    environment:
+      - ZOO_MY_ID=1
+      - ZOO_SERVERS=server.1=0.0.0.0:2888:3888 server.2=zookeeper2:2888:3888 server.3=zookeeper3:2888:3888
+#    healthcheck:
+#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-manager]      
+  zookeeper2:
+    image: zookeeper
+    environment:
+      - ZOO_MY_ID=2
+      - ZOO_SERVERS=server.1=zookeeper1:2888:3888 server.2=0.0.0.0:2888:3888 server.3=zookeeper3:2888:3888
+#    healthcheck:
+#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-a]
+  zookeeper3:
+    image: zookeeper
+    environment:
+      - ZOO_MY_ID=3
+      - ZOO_SERVERS=server.1=zookeeper1:2888:3888 server.2=zookeeper2:2888:3888 server.3=0.0.0.0:2888:3888
+#    healthcheck:
+#      test: ["CMD", "/opt/zookeeper-3.4.9/bin/zkServer.sh","status"]
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-b]
+
+  nifi1:
+    image: mkobit/nifi:1.1.0-oracle-java8
+    hostname: nifi1
+    ports:
+      - 8080:8080
+    user: root
+    environment:
+      - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n
+    volumes:
+      - /root/nifi.properties:/opt/nifi/conf/nifi.properties:ro
+      - /root/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
+      - /srv/nifi/flow:/opt/nifi/flow:Z
+      - /srv/nifi/content_repository:/opt/nifi/content_repository:Z
+      - /srv/nifi/database_repository:/opt/nifi/database_repository:Z
+      - /srv/nifi/flowfile_repository:/opt/nifi/flowfile_repository:Z
+      - /srv/nifi/provenance_repository:/opt/nifi/provenance_repository:Z
+      - /srv/nifi/work:/opt/nifi/work:Z
+      - /srv/nifi/logs:/opt/nifi/logs:Z
+      - /tmp/data:/tmp/data:Z
+#    healthcheck:
+#      test: ["CMD", "wget","-q","http://localhost:8080","-O","/dev/null"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 300
+#    depends_on:
+#      - zookeeper
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-a]
+  nifi2:
+    image: mkobit/nifi:1.1.0-oracle-java8
+    hostname: nifi2
+    ports:
+      - 8085:8085
+    user: root
+    environment:
+      - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,address=7000,server=y,suspend=n
+    volumes:
+      - /root/nifi.properties:/opt/nifi/conf/nifi.properties:ro
+      - /root/bootstrap.conf:/opt/nifi/conf/bootstrap.conf:ro
+      - /srv/nifi/flow:/opt/nifi/flow:Z
+      - /srv/nifi/content_repository:/opt/nifi/content_repository:Z
+      - /srv/nifi/database_repository:/opt/nifi/database_repository:Z
+      - /srv/nifi/flowfile_repository:/opt/nifi/flowfile_repository:Z
+      - /srv/nifi/provenance_repository:/opt/nifi/provenance_repository:Z
+      - /srv/nifi/work:/opt/nifi/work:Z
+      - /srv/nifi/logs:/opt/nifi/logs:Z
+      - /tmp/data:/tmp/data:Z
+#    healthcheck:
+#      test: ["CMD", "wget","-q","http://localhost:8080","-O","/dev/null"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 300
+#    depends_on:
+#      - zookeeper
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-b]
+  nginx1:
+    image: "nginx"
+    ports:
+      - "80:80"
+    volumes:
+      - /etc/nginx/conf.d/:/etc/nginx/conf.d/:ro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-a]
+  nginx2:
+    image: "nginx"
+    ports:
+      - "85:85"
+    volumes:
+      - /etc/nginx/conf.d/:/etc/nginx/conf.d/:ro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.hostname == centos-b]
