@@ -120,6 +120,107 @@ When this is done we can start the stack like this:
 
     docker stack rm  stack1
 
+## Niffi cluster
+
+A couple of things to note when running components that have inherent clustering support themselves. In a typical scenario when deploying stateless services into docker swarm, docker swarm itself takes care of replication, load balancing and failover. It is in essesnce an out-of-the-box cluster solution and your services don't need to worry about anything. You take 1 service definition, and you give it a desired state (for example I want to have 2 replicaes).
+
+When it comes to components that have their own clustering solution (like Nifi, but also Zookeeper or Kafka) we need a different approach. In that scenario, if we want to make them available in Docker Swarm, we cannot let Swarm handle the replication for us, but we ned to configure them in such a way that we let the component itself do the clustering.
+
+Nifi has a zero-master clusternig and depends on Apache ZooKeeper to provide automatic election of different clustering-related roles. In Nifi's case we have
+
+- Primary Node
+- Cluster Coordinator
+
+### Primary Node
+
+Explain (todo)
+
+### Cluster Coordinator
+
+Explain (todo)
+
+## Nifi Cluster related issus
+
+In Docker swarm, every service instance has 2 ip addresses. 1 internal address specific to that particular instance, and 1 DNS address that is the same for all instances. In the current swarm implementation, the way that a host is resolved differs from the fact if the resolve took place internally (inside the container), or from another place in the swarm (outside the container, but in the same swarm network). This is illustrated in https://github.com/docker/docker/issues/30963 and has some consequences for Apache Nifi.
+
+    docker service inspect   --format='{{json .Endpoint.VirtualIPs}}' stack1_nifi1
+    [{"NetworkID":"ubzje45aw1e38b6p17qaxlns5","Addr":"10.255.0.8/16"},{"NetworkID":"r1nhzzbj9tju52zvc448wogdy","Addr":"10.0.0.10/24"}]
+
+Inside the container, when we ping th instance we get the same ip address:
+
+    [root@centos-a ~]# docker exec -ti 215a14b35c82 /bin/sh
+    # ping stack1_nifi1
+    PING stack1_nifi1 (10.0.0.10): 56 data bytes
+    64 bytes from 10.0.0.10: icmp_seq=0 ttl=64 time=0.047 ms
+    64 bytes from 10.0.0.10: icmp_seq=1 ttl=64 time=0.074 ms
+
+However, when we look at /etc/hosts, we see a different ip address:
+
+    # cat /etc/hosts
+    127.0.0.1 localhost
+    ::1 localhost ip6-localhost ip6-loopback
+    fe00::0 ip6-localnet
+    ff00::0 ip6-mcastprefix
+    ff02::1 ip6-allnodes
+    ff02::2 ip6-allrouters
+    10.0.0.11 215a14b35c82
+
+When Nifi starts, it starts a web server for the ui and therefor needs to bind to a certain ip / host. When nothing is provided, it binds to 0.0.0.0, listens on all interfaces (including 10.0.0.11 and 10.0.0.10).
+
+Because `nifi.web.http.host` is blank it defaults to `localhost` and uses that to identify himself. 
+As a consequence, the NodeID that it uses to identify itself in the cluster becomes localhost:8080.
+
+    # Leave blank so that it binds to all possible interfaces 
+    nifi.web.http.host= 
+    nifi.web.http.port=8080  #(8085 on the other node) 
+
+As Nifi seems to be using `nifi.web.http.host` to generate the NodeID, and to identify the nodes to do UI replication. the obvious fix would be to specify the actual hostname here. That way Nifi would bind to the interfaces configured for that host (by doing a reverse DNS lookup).
+
+The problem with that is that nifi only listens on `10.10.0.10` when using `nifi.web.http.host=nifi1`
+
+When starting with `nifi.web.http.host=localhost` from inside the container:
+
+    curl -v http://10.0.0.10:8080/nifi/         connection refused
+    curl -v http://10.0.0.11:8080/nifi/         connection refused
+    curl -v http://stack1_nifi1:8080/nifi/      connection refused
+
+When starting with `nifi.web.http.host=nifi1` from inside the container:
+
+    curl -v http://10.0.0.10:8080/nifi/         connection refused
+    curl -v http://10.0.0.11:8080/nifi/         connection refused
+    curl -v http://stack1_nifi1:8080/nifi/      connection refused
+
+When starting with `nifi.web.http.host=10.0.0.10` from inside the container:
+
+    curl -v http://10.0.0.10:8080/nifi/         connection refused
+    curl -v http://10.0.0.11:8080/nifi/         connection refused
+    curl -v http://stack1_nifi1:8080/nifi/      connection refused
+
+When starting with `nifi.web.http.host=10.0.0.11` from inside the container:
+
+    curl -v http://10.0.0.10:8080/nifi/         http 200
+    curl -v http://10.0.0.11:8080/nifi/         http 200
+    curl -v http://stack1_nifi1:8080/nifi/      http 200
+    
+So we only get good results when the listen address is 10.0.0.11.
+However, when specifying `nifi.web.http.host=nifi1`, it seems to listen at 10.0.0.10 resulting in failures.
+As we obviously don't want to hardcode ip addresses in web.http.host, and we cannot use `localhost` we're left with using `nifi`.
+
+As a `workaround`, we can specify the `hostname` flag in our docker config, to inject `nifi1` in the hostfile.
+
+That way, when we look in the hosts file, we see that nifi1 will resolve to 10.0.0.11 and all is good.
+
+    [root@centos-a ~]# docker exec -ti f2e /bin/sh
+    # cat /etc/hosts
+    127.0.0.1	localhost
+    ::1	localhost ip6-localhost ip6-loopback
+    fe00::0	ip6-localnet
+    ff00::0	ip6-mcastprefix
+    ff02::1	ip6-allnodes
+    ff02::2	ip6-allrouters
+    10.0.0.11	nifi1
+
+
 ### Swarm troubleshooting
 
 #### IP address
@@ -185,7 +286,6 @@ if you forgot how to join the swarm cluster as either a manager or as a worker, 
     docker swarm join-token manager
     docker swarm join-token worker
 
- 
 #### Cluster in an consistent state
 
 Sometimes swarm can get confused, and you might want to leave the swarm altogether.
